@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>透鏡成像互動模擬</title>
+<style>
+:root{
+  --bg:#0b1220; --panel:#121c30; --panel2:#18243d; --line:#27375a;
+  --text:#e8eefc; --muted:#9fb0d3; --accent:#4cc9f0;
+  --obj:#4cc9f0; --img:#ff9f43; --r1:#ff6b6b; --r2:#ffd166; --r3:#5ee0a0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.55}
+header{padding:18px 20px 6px;max-width:1240px;margin:0 auto}
+header h1{margin:0;font-size:24px;letter-spacing:.5px}
+header p{margin:4px 0 0;color:var(--muted);font-size:14px}
+main{max-width:1240px;margin:0 auto;padding:10px 20px 40px}
+.stage{overflow-x:auto;border-radius:14px;border:1px solid var(--line);background:#0a1020}
+canvas{display:block;width:100%;min-width:720px;height:auto;aspect-ratio:1100/580;cursor:ew-resize;touch-action:pan-y}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 4px 2px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:22px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.card h2{margin:0 0 12px;font-size:17px}
+.seg{display:flex;gap:8px;margin-bottom:12px}
+.seg button{flex:1;padding:9px 0;border-radius:10px;border:1px solid var(--line);background:var(--panel2);
+  color:var(--text);font-size:15px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#04121c;font-weight:700;border-color:var(--accent)}
+label.row{display:block;margin:10px 0 2px;font-size:14px;color:var(--muted)}
+label.row b{float:right;color:var(--text)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+.chips button{padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);
+  color:var(--text);font-size:13px;cursor:pointer}
+.chips button:hover{border-color:var(--accent)}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin:10px 0;font-size:14px}
+.checks label{cursor:pointer}
+#playBtn{width:100%;padding:10px;border-radius:10px;border:0;background:#2ec4b6;color:#03211d;
+  font-weight:700;font-size:15px;cursor:pointer}
+#playBtn.on{background:#ff6b6b;color:#2a0505}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:34px}
+.badge{padding:5px 12px;border-radius:999px;font-size:15px;font-weight:700;border:1px solid transparent}
+.b-real{background:#12385a;color:#8fd3ff;border-color:#2b6ea3}
+.b-virt{background:#3b2a63;color:#d3b8ff;border-color:#7a58c9}
+.b-up{background:#12402f;color:#8ff0c0;border-color:#2c8a63}
+.b-inv{background:#4a2f12;color:#ffc98a;border-color:#a8691f}
+.b-size{background:#3f1f33;color:#ffa8d0;border-color:#a23e75}
+.b-none{background:#3a3a46;color:#d0d0e0;border-color:#6a6a80}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stats div{background:var(--panel2);border-radius:10px;padding:8px 12px}
+.stats span{display:block;font-size:12px;color:var(--muted)}
+.stats b{font-size:16px}
+.formula{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#cfe0ff;
+  background:#0d1628;border-radius:10px;padding:10px 12px;margin:12px 0 8px;word-break:break-all}
+.explain{margin:8px 0 0;font-size:14.5px}
+.note{font-size:12px;color:var(--muted);margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:8px 8px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+tr[data-k]{cursor:pointer}
+tr[data-k]:hover{background:#18243d}
+tr.cur{background:#1d3a5c}
+tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.tip{font-size:13px;color:var(--muted);margin:8px 0 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔍 透鏡成像互動模擬</h1>
+  <p>拖曳畫面左半部可移動物體；畫面下方的色帶會標示「物體放在哪一區 → 會成什麼樣的像」。</p>
+</header>
+
+<main>
+  <div class="stage"><canvas id="cv"></canvas></div>
+  <div class="legend">
+    <span><i style="background:var(--r1)"></i>平行主軸入射 → 折射後通過（凹透鏡：彷彿來自）焦點</span>
+    <span><i style="background:var(--r2)"></i>通過光心 → 方向不變</span>
+    <span><i style="background:var(--r3)"></i>朝向焦點入射 → 折射後平行主軸</span>
+    <span>實線＝實際光線，虛線＝反向延長線（虛像）</span>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>🎛 控制面板</h2>
+      <div class="seg" id="typeSeg">
+        <button data-t="convex" class="on">凸透鏡</button>
+        <button data-t="concave">凹透鏡</button>
+      </div>
+      <label class="row">焦距 f（大小）<b id="fOut"></b></label>
+      <input type="range" id="fR" min="6" max="20" step="0.5" value="10">
+      <label class="row">物距 u（物體到透鏡）<b id="uOut"></b></label>
+      <input type="range" id="uR" min="2" max="62" step="0.1" value="26">
+      <div class="chips" id="chips"></div>
+      <label class="row">物體高度 h<b id="hOut"></b></label>
+      <input type="range" id="hR" min="1" max="6" step="0.5" value="3">
+      <div class="checks">
+        <label><input type="checkbox" id="ckRays" checked> 顯示三條主光線</label>
+        <label><input type="checkbox" id="ckAnim" checked> 光線動畫</label>
+        <label><input type="checkbox" id="ckZones" checked> 區域成像標籤</label>
+        <label><input type="checkbox" id="ckExt" checked> 虛像延長線</label>
+      </div>
+      <button id="playBtn">▶ 自動掃描（物體由遠而近）</button>
+      <p class="tip">小技巧：拖曳時靠近 f、2f 會自動吸附，方便觀察特殊位置。</p>
+    </section>
+
+    <section class="card">
+      <h2>📊 即時成像資訊</h2>
+      <div class="badges" id="badges"></div>
+      <div class="stats">
+        <div><span>物距 u</span><b id="sU"></b></div>
+        <div><span>焦距 f</span><b id="sF"></b></div>
+        <div><span>像距 v</span><b id="sV"></b></div>
+        <div><span>放大率 m = −v / u</span><b id="sM"></b></div>
+        <div><span>物高 → 像高</span><b id="sH"></b></div>
+        <div><span>像的位置</span><b id="sP"></b></div>
+      </div>
+      <div class="formula" id="formula"></div>
+      <p class="explain" id="explain"></p>
+      <p class="note">符號約定：v &gt; 0 為實像（在透鏡異側）、v &lt; 0 為虛像（與物同側）；m &gt; 0 正立、m &lt; 0 倒立；凹透鏡 f 取負值。</p>
+    </section>
+
+    <section class="card">
+      <h2>📚 成像規律整理（點選列可跳到該位置）</h2>
+      <table id="tbl"></table>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  // ---------- 畫布與座標 ----------
+  const W = 1100, H = 580, Lx = 520, Ay = 250, S = 8, LENS_H = 170, BT = 474;
+  const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif';
+  const C_OBJ = '#4cc9f0', C_IMG = '#ff9f43';
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  let ratio = 1;
+  const X = x => Lx + x * S, Y = y => Ay - y * S;
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = cv.clientWidth || W;
+    ratio = cssW / W;
+    cv.width = Math.round(cssW * dpr);
+    cv.height = Math.round(H * ratio * dpr);
+    ctx.setTransform(ratio * dpr, 0, 0, ratio * dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------- 狀態 ----------
+  const st = { type: 'convex', F: 10, u: 26, h: 3, rays: true, anim: true, zones: true, ext: true, auto: false, dir: -1 };
+
+  const $ = id => document.getElementById(id);
+  const num = (x, d = 1) => {
+    if (Math.abs(x) > 999) return x > 0 ? '+∞（極遠）' : '−∞（極遠）';
+    return x.toFixed(d).replace('-', '−');
+  };
+
+  // ---------- 成像計算 ----------
+  function compute() {
+    const { type, F, u, h } = st;
+    const convex = type === 'convex';
+    const f = convex ? F : -F;
+    const atF = convex && Math.abs(u - F) < 0.05;
+    const at2F = convex && Math.abs(u - 2 * F) < 0.05;
+    const r = { f, atF, at2F };
+    if (!atF) {
+      r.v = 1 / (1 / f - 1 / u);
+      r.m = -r.v / u;
+      r.real = r.v > 0;
+      r.upright = r.m > 0;
+      const a = Math.abs(r.m);
+      r.size = a > 1.01 ? '放大' : (a < 0.99 ? '縮小' : '等大');
+      r.hi = r.m * h;
+    }
+    if (convex) {
+      r.key = atF ? 'd' : at2F ? 'b' : u > 2 * F ? 'a' : u > F ? 'c' : 'e';
+    } else {
+      r.key = u > 2 * F ? 'a' : u > F ? 'c' : 'e';
+    }
+    return r;
+  }
+
+  // ---------- 繪圖輔助 ----------
+  function hexA(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+  function rr(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function tag(text, x, y, color, o = {}) {
+    const size = o.size || 13;
+    ctx.save();
+    ctx.font = (o.bold ? 'bold ' : '') + size + 'px ' + FONT;
+    const w = ctx.measureText(text).width + 14, h = size + 9;
+    const x0 = x - w / 2, y0 = y - h / 2;
+    rr(x0, y0, w, h, 6);
+    ctx.fillStyle = o.fill || 'rgba(8,14,28,.85)'; ctx.fill();
+    ctx.lineWidth = o.active ? 2.5 : 1.2; ctx.strokeStyle = color; ctx.stroke();
+    ctx.fillStyle = o.text || '#f2f6ff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 1);
+    ctx.restore();
+  }
+  function line(x1, y1, x2, y2, color, w = 2, dash) {
+    ctx.beginPath(); ctx.setLineDash(dash || []); ctx.strokeStyle = color; ctx.lineWidth = w;
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
+  }
+  function arrow(x, y0, y1, color, w, dashed, alpha) {
+    ctx.save(); ctx.globalAlpha = alpha || 1; ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = w;
+    if (dashed) ctx.setLineDash([7, 5]);
+    ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); ctx.setLineDash([]);
+    const dir = y1 < y0 ? -1 : 1, len = Math.abs(y1 - y0), hs = Math.min(13, len * 0.5);
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x - hs * .6, y1 - dir * hs); ctx.lineTo(x + hs * .6, y1 - dir * hs);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  function dim(x1, x2, y, color, text, dashed) {
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; if (dashed) ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x1, y - 5); ctx.lineTo(x1, y + 5); ctx.moveTo(x2, y - 5); ctx.lineTo(x2, y + 5); ctx.stroke();
+    ctx.restore();
+    tag(text, Math.max(70, Math.min(W - 70, (x1 + x2) / 2)), y - 12, color, { size: 12 });
+  }
+
+  // ---------- 光線 ----------
+  function buildRays(r) {
+    const { u, h } = st, f = r.f, xe = (W - Lx) / S + 2;
+    const rays = [];
+    // 紅：平行主軸
+    {
+      const dx = f > 0 ? f : -f, dy = f > 0 ? -h : h;
+      rays.push({ c: '#ff6b6b', pts: [[-u, h], [0, h], [xe, h + dy * xe / dx]], ext: [[0, h]] });
+    }
+    // 黃：過光心
+    rays.push({ c: '#ffd166', pts: [[-u, h], [xe, -h / u * xe]], ext: [] , center: true });
+    // 綠：朝向焦點
+    if (!r.atF) {
+      const yl = h * f / (f - u);
+      if (Math.abs(yl * S) < 245) rays.push({ c: '#5ee0a0', pts: [[-u, h], [0, yl], [xe, yl]], ext: [[0, yl]] });
+    }
+    return rays;
+  }
+  function pulses(pts, color, t) {
+    const segs = []; let L = 0;
+    for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); segs.push(d); L += d; }
+    if (L < 1) return;
+    const n = 3;
+    for (let k = 0; k < n; k++) {
+      let s = (t * 170 + k * L / n) % L, i = 0;
+      while (i < segs.length - 1 && s > segs[i]) { s -= segs[i]; i++; }
+      const fr = segs[i] ? s / segs[i] : 0;
+      const x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * fr, y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * fr;
+      ctx.beginPath(); ctx.fillStyle = hexA(color, .25); ctx.arc(x, y, 9, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.fillStyle = '#fff'; ctx.arc(x, y, 3.6, 0, 7); ctx.fill();
+    }
+  }
+
+  // ---------- 區域色帶 ----------
+  function drawZones(r) {
+    const F = st.F, cx = st.type === 'convex', BH = H - BT - 6;
+    const col = cx ? { a: '#2ec4b6', c: '#ffb703', e: '#b185ff' } : { a: '#ff6b9a', c: '#ff6b9a', e: '#ff6b9a' };
+    const tags = cx
+      ? { a: ['倒立', '縮小', '實像'], c: ['倒立', '放大', '實像'], e: ['正立', '放大', '虛像'] }
+      : { a: ['正立', '縮小', '虛像'], c: ['正立', '縮小', '虛像'], e: ['正立', '縮小', '虛像'] };
+    const segs = [
+      { x0: 2, x1: X(-2 * F), k: 'a', rng: 'u > 2f' },
+      { x0: X(-2 * F), x1: X(-F), k: 'c', rng: 'f < u < 2f' },
+      { x0: X(-F), x1: Lx, k: 'e', rng: 'u < f' }];
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    segs.forEach(s => {
+      const act = r.key === s.k, w = s.x1 - s.x0;
+      ctx.fillStyle = hexA(col[s.k], act ? .40 : .12); ctx.fillRect(s.x0, BT, w, BH);
+      ctx.fillStyle = col[s.k]; ctx.fillRect(s.x0, BT, w, act ? 5 : 3);
+      const cxm = s.x0 + w / 2;
+      ctx.fillStyle = '#dfe8ff'; ctx.font = '11px ' + FONT; ctx.fillText(s.rng, cxm, BT + 20);
+      ctx.fillStyle = act ? '#fff' : col[s.k]; ctx.font = 'bold 14px ' + FONT;
+      if (w >= 170) ctx.fillText(tags[s.k].join('・'), cxm, BT + 48);
+      else tags[s.k].forEach((t, i) => ctx.fillText(t, cxm, BT + 42 + i * 18));
+    });
+    ctx.fillStyle = '#9fb0d3'; ctx.font = '11px ' + FONT; ctx.textAlign = 'left';
+    ctx.fillText('▼ 物體放在這一區時，像的性質', 8, BT - 6);
+
+    // 右側：像的位置區
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#9fb0d3'; ctx.font = '11px ' + FONT; ctx.textAlign = 'left';
+    ctx.fillText('▼ 像出現的位置', Lx + 8, BT - 6);
+    ctx.textAlign = 'center';
+    if (cx) {
+      const rs = [
+        { x0: Lx, x1: X(F), a: ['0 ~ f', '無實像'], on: false, c: '#6b7aa0' },
+        { x0: X(F), x1: X(2 * F), a: ['f ~ 2f', 'u>2f', '的像'], on: r.real && r.v < 2 * F - 0.05, c: '#2ec4b6' },
+        { x0: X(2 * F), x1: W - 2, a: ['> 2f', 'f<u<2f 的像'], on: r.real && r.v >= 2 * F - 0.05, c: '#ffb703' }];
+      rs.forEach(s => {
+        const w = s.x1 - s.x0;
+        ctx.fillStyle = hexA(s.c, s.on ? .38 : .10); ctx.fillRect(s.x0, BT, w, BH);
+        ctx.fillStyle = s.c; ctx.fillRect(s.x0, BT, w, s.on ? 5 : 3);
+        ctx.fillStyle = s.on ? '#fff' : '#cfd9f3'; ctx.font = (s.on ? 'bold ' : '') + '11px ' + FONT;
+        s.a.forEach((t, i) => ctx.fillText(t, s.x0 + w / 2, BT + 20 + i * 18));
+      });
+    } else {
+      ctx.fillStyle = hexA('#6b7aa0', .12); ctx.fillRect(Lx, BT, W - Lx - 2, BH);
+      ctx.fillStyle = '#6b7aa0'; ctx.fillRect(Lx, BT, W - Lx - 2, 3);
+      ctx.fillStyle = '#cfd9f3'; ctx.font = '13px ' + FONT;
+      ctx.fillText('光線經凹透鏡後發散', Lx + (W - Lx) / 2, BT + 34);
+      ctx.fillText('右側永遠不會成實像', Lx + (W - Lx) / 2, BT + 58);
+      ctx.fillText('（虛像在物體與透鏡之間）', Lx + (W - Lx) / 2, BT + 82);
+    }
+    ctx.restore();
+    // 特殊位置標籤
+    if (cx) {
+      tag('u = 2f：倒立・等大・實像', X(-2 * F), BT - 42, '#ffe08a', { size: 12, active: r.key === 'b' });
+      tag('u = f：不成像（平行光）', X(-F), BT - 21, '#ffe08a', { size: 12, active: r.key === 'd' });
+    }
+  }
+
+  function drawMarkers() {
+    const F = st.F;
+    ctx.save();
+    for (const sg of [-1, 1]) for (const m of [1, 2]) {
+      const x = X(sg * m * F);
+      line(x, 30, x, BT - 56, 'rgba(159,176,211,.16)', 1, [4, 5]);
+      line(x, Ay - 8, x, Ay + 8, '#b0c4ff', 2);
+      ctx.beginPath(); ctx.fillStyle = '#b0c4ff'; ctx.arc(x, Ay, 3.5, 0, 7); ctx.fill();
+      tag(m === 1 ? 'F' : '2F', x, Ay + 24, '#6f86c4', { size: 12, bold: true });
+    }
+    ctx.restore();
+  }
+
+  function drawLens() {
+    const top = Ay - LENS_H, bot = Ay + LENS_H;
+    ctx.save(); ctx.beginPath();
+    if (st.type === 'convex') {
+      ctx.moveTo(Lx, top); ctx.quadraticCurveTo(Lx + 36, Ay, Lx, bot); ctx.quadraticCurveTo(Lx - 36, Ay, Lx, top);
+    } else {
+      ctx.moveTo(Lx - 20, top); ctx.lineTo(Lx + 20, top); ctx.quadraticCurveTo(Lx + 2, Ay, Lx + 20, bot);
+      ctx.lineTo(Lx - 20, bot); ctx.quadraticCurveTo(Lx - 2, Ay, Lx - 20, top);
+    }
+    ctx.closePath(); ctx.fillStyle = 'rgba(76,201,240,.22)'; ctx.fill();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = '#7fd8f5'; ctx.stroke(); ctx.restore();
+    tag(st.type === 'convex' ? '凸透鏡（會聚光線）' : '凹透鏡（發散光線）', Lx, top - 22, '#7fd8f5', { size: 14, bold: true });
+  }
+
+  // ---------- 主繪圖 ----------
+  function draw(t) {
+    ctx.clearRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0d1730'); g.addColorStop(1, '#080d1a');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    const r = compute(), { u, h } = st;
+
+    if (st.zones) drawZones(r);
+    // 主光軸與刻度
+    line(0, Ay, W, Ay, '#51638f', 1.5);
+    for (let c = -65; c <= 72; c += 5) {
+      const x = X(c); if (x < 0 || x > W) continue;
+      line(x, Ay - (c % 10 === 0 ? 5 : 3), x, Ay + (c % 10 === 0 ? 5 : 3), '#3d4d78', 1);
+    }
+    drawMarkers();
+    drawLens();
+
+    // 光線
+    if (st.rays) {
+      const rays = buildRays(r);
+      const I = r.atF ? null : [r.v, r.hi];
+      // 延長線
+      if (st.ext && I && !r.real) {
+        rays.forEach(R => {
+          R.ext.forEach(p => line(X(p[0]), Y(p[1]), X(I[0]), Y(I[1]), hexA(R.c, .65), 1.6, [6, 6]));
+          if (R.center && I[0] < -u) line(X(-u), Y(h), X(I[0]), Y(I[1]), hexA(R.c, .65), 1.6, [6, 6]);
+        });
+      }
+      rays.forEach(R => {
+        const pts = R.pts.map(p => [X(p[0]), Y(p[1])]);
+        ctx.beginPath(); ctx.strokeStyle = hexA(R.c, .95); ctx.lineWidth = 2;
+        pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
+        if (st.anim) pulses(pts, R.c, t);
+      });
+    }
+
+    // 物體
+    arrow(X(-u), Ay, Y(h), C_OBJ, 4.5, false, 1);
+    tag('物體', X(-u), Y(h) - 18, C_OBJ, { size: 13, bold: true });
+
+    // 像
+    if (r.atF) {
+      tag('u = f：折射光線互相平行，不會相交 → 不成像（像在無窮遠）', Lx + 270, 62, '#ffe08a', { size: 13, bold: true });
+    } else {
+      const xi = X(r.v), yi = Y(r.hi);
+      arrow(xi, Ay, yi, C_IMG, 4.5, !r.real, r.real ? 1 : .8);
+      const lbl = `像：${r.upright ? '正立' : '倒立'}・${r.size}・${r.real ? '實像' : '虛像'}`;
+      if (xi > W - 40) tag(`${lbl}（在右側更遠處，v≈${num(r.v, 0)} cm）→`, W - 190, 62, C_IMG, { size: 13, bold: true });
+      else if (xi < 40) tag(`←（在左側更遠處，v≈${num(r.v, 0)} cm）${lbl}`, 210, 62, C_IMG, { size: 13, bold: true });
+      else {
+        let ty = r.hi > 0 ? yi - 20 : yi + 24;
+        ty = Math.max(22, Math.min(BT - 60, ty));
+        tag(lbl, Math.max(95, Math.min(W - 95, xi)), ty, C_IMG, { size: 13, bold: true });
+      }
+    }
+
+    // 距離標註
+    dim(X(-u), Lx, Ay + 82, C_OBJ, `u = ${u.toFixed(1)} cm`);
+    if (!r.atF) {
+      const x2 = Math.max(4, Math.min(W - 4, X(r.v)));
+      dim(Lx, x2, Ay + 108, C_IMG, `v = ${num(r.v)} cm`, !r.real);
+    }
+  }
+
+  // ---------- 資訊面板 ----------
+  const ROWS = {
+    convex: [
+      { k: 'a', rng: 'u > 2f', pos: '異側，f < v < 2f', prop: '倒立・縮小・實像', app: '照相機、人眼', rep: 3 },
+      { k: 'b', rng: 'u = 2f', pos: '異側，v = 2f', prop: '倒立・等大・實像', app: '等大翻拍、測量焦距', rep: 2 },
+      { k: 'c', rng: 'f < u < 2f', pos: '異側，v > 2f', prop: '倒立・放大・實像', app: '投影機、幻燈機', rep: 1.5 },
+      { k: 'd', rng: 'u = f', pos: '無（光線平行）', prop: '不成像', app: '探照燈、手電筒', rep: 1 },
+      { k: 'e', rng: 'u < f', pos: '同側，|v| > u', prop: '正立・放大・虛像', app: '放大鏡', rep: 0.5 }],
+    concave: [
+      { k: 'a', rng: 'u > 2f', pos: '同側，在物與透鏡之間', prop: '正立・縮小・虛像', app: '近視眼鏡', rep: 3 },
+      { k: 'c', rng: 'f < u < 2f', pos: '同側，在物與透鏡之間', prop: '正立・縮小・虛像', app: '門上窺視孔（貓眼）', rep: 1.5 },
+      { k: 'e', rng: 'u < f', pos: '同側，在物與透鏡之間', prop: '正立・縮小・虛像', app: '廣角附加鏡', rep: 0.5 }]
+  };
+  const EXPLAIN = {
+    convex: {
+      a: '物體在 2f 之外：光線通過凸透鏡後，在另一側 f～2f 之間會聚，形成倒立、縮小的實像，可以用光屏接到（照相機的原理）。',
+      b: '物體剛好在 2f：像也剛好在另一側 2f 處，大小與物體相同，是倒立的實像（u = v = 2f）。',
+      c: '物體在 f 與 2f 之間：像成在另一側 2f 之外，是倒立、放大的實像（投影機、幻燈機）。物體越靠近 f，像越大、越遠。',
+      d: '物體剛好在焦點 f：折射後的光線互相平行，永遠不會相交，所以不成像（像在無窮遠）。反過來，把光源放在 f 就能得到平行光。',
+      e: '物體在 f 之內：折射光線仍然發散，無法在光屏上成像；但從透鏡另一側往回看，反向延長線交於物體同側，看到正立、放大的虛像（放大鏡）。'
+    },
+    concave: {
+      a: '凹透鏡使光線發散。無論物體在哪裡，都只能得到正立、縮小的虛像，像位在物體與透鏡之間（同側）。物體很遠時，像最小、靠近焦點。',
+      c: '物體在 f 與 2f 之間：仍然是正立、縮小的虛像。物體越靠近透鏡，像越大、越靠近物體，但永遠比物體小。',
+      e: '物體在 f 之內：依然是正立、縮小的虛像。凹透鏡永遠不會成實像，所以不能用光屏接到像。'
+    }
+  };
+
+  function updatePanel() {
+    const r = compute(), convex = st.type === 'convex';
+    $('uOut').textContent = st.u.toFixed(1) + ' cm';
+    $('fOut').textContent = st.F.toFixed(1) + ' cm';
+    $('hOut').textContent = st.h.toFixed(1) + ' cm';
+    $('sU').textContent = st.u.toFixed(1) + ' cm';
+    $('sF').textContent = (convex ? '+' : '−') + st.F.toFixed(1) + ' cm';
+    if (r.atF) {
+      $('badges').innerHTML = '<span class="badge b-none">不成像</span>';
+      $('sV').textContent = '∞（無窮遠）'; $('sM').textContent = '—'; $('sH').textContent = '—'; $('sP').textContent = '—';
+      $('formula').textContent = `1/u + 1/v = 1/f → 1/${st.u.toFixed(1)} + 1/v = 1/${st.F.toFixed(1)} → 1/v = 0，v → ∞`;
+    } else {
+      $('badges').innerHTML =
+        `<span class="badge ${r.real ? 'b-real' : 'b-virt'}">${r.real ? '實像' : '虛像'}</span>` +
+        `<span class="badge ${r.upright ? 'b-up' : 'b-inv'}">${r.upright ? '正立' : '倒立'}</span>` +
+        `<span class="badge b-size">${r.size}</span>`;
+      $('sV').textContent = num(r.v) + ' cm';
+      $('sM').textContent = num(r.m, 2) + '（' + (r.upright ? '正立' : '倒立') + '）';
+      $('sH').textContent = `${st.h.toFixed(1)} → ${Math.abs(r.hi) > 999 ? '極大' : Math.abs(r.hi).toFixed(1)} cm`;
+      $('sP').textContent = r.real ? '透鏡另一側（異側）' : '與物同一側';
+      $('formula').textContent =
+        `1/f = 1/u + 1/v → 1/(${num(r.f)}) = 1/${st.u.toFixed(1)} + 1/v → v = ${num(r.v)} cm；m = −v/u = ${num(r.m, 2)}`;
+    }
+    $('explain').textContent = EXPLAIN[st.type][r.key];
+    document.querySelectorAll('#tbl tr[data-k]').forEach(tr => tr.classList.toggle('cur', tr.dataset.k === r.key));
+  }
+
+  function buildTable() {
+    const rows = ROWS[st.type];
+    $('tbl').innerHTML =
+      '<tr><th>物體位置</th><th>像的位置</th><th>像的性質</th><th>應用</th></tr>' +
+      rows.map(o => `<tr data-k="${o.k}" data-rep="${o.rep}"><td><b>${o.rng}</b></td><td>${o.pos}</td><td>${o.prop}</td><td>${o.app}</td></tr>`).join('');
+    $('tbl').querySelectorAll('tr[data-k]').forEach(tr => tr.addEventListener('click', () => { stopAuto(); setU(+tr.dataset.rep * st.F); }));
+  }
+  function buildChips() {
+    const items = [['3f', 3], ['2f', 2], ['1.5f', 1.5], ['f', 1], ['0.5f', 0.5]];
+    $('chips').innerHTML = items.map(([n, k]) => `<button data-k="${k}">u = ${n}</button>`).join('');
+    $('chips').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { stopAuto(); setU(+b.dataset.k * st.F); }));
+  }
+
+  // ---------- 互動 ----------
+  function setU(v) {
+    st.u = Math.max(2, Math.min(62, +(+v).toFixed(2)));
+    $('uR').value = st.u; updatePanel();
+  }
+  function stopAuto() { st.auto = false; $('playBtn').classList.remove('on'); $('playBtn').textContent = '▶ 自動掃描（物體由遠而近）'; }
+  function startAuto() {
+    st.auto = true; st.dir = -1; if (st.u < 8) setU(60);
+    $('playBtn').classList.add('on'); $('playBtn').textContent = '⏸ 停止掃描';
+  }
+  $('playBtn').addEventListener('click', () => st.auto ? stopAuto() : startAuto());
+
+  $('uR').addEventListener('input', e => { stopAuto(); st.u = +e.target.value; updatePanel(); });
+  $('fR').addEventListener('input', e => { st.F = +e.target.value; updatePanel(); });
+  $('hR').addEventListener('input', e => { st.h = +e.target.value; updatePanel(); });
+  [['ckRays', 'rays'], ['ckAnim', 'anim'], ['ckZones', 'zones'], ['ckExt', 'ext']].forEach(([id, k]) =>
+    $(id).addEventListener('change', e => { st[k] = e.target.checked; }));
+  $('typeSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    st.type = b.dataset.t;
+    $('typeSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    buildTable(); updatePanel();
+  }));
+
+  let dragging = false;
+  function fromPointer(e) {
+    const rect = cv.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / ratio;
+    let uu = (Lx - px) / S; uu = Math.max(2, Math.min(62, uu));
+    for (const t of [st.F, 2 * st.F]) if (Math.abs(uu - t) < 0.4) uu = t;
+    setU(uu);
+  }
+  cv.addEventListener('pointerdown', e => {
+    const rect = cv.getBoundingClientRect();
+    if ((e.clientX - rect.left) / ratio < Lx - 6) {
+      dragging = true; cv.setPointerCapture(e.pointerId); stopAuto(); fromPointer(e);
+    }
+  });
+  cv.addEventListener('pointermove', e => { if (dragging) fromPointer(e); });
+  ['pointerup', 'pointercancel'].forEach(ev => cv.addEventListener(ev, () => { dragging = false; }));
+
+  // ---------- 動畫迴圈 ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (st.auto) {
+      st.u += st.dir * 6 * dt;
+      if (st.u <= 3) { st.u = 3; st.dir = 1; }
+      if (st.u >= 60) { st.u = 60; st.dir = -1; }
+      $('uR').value = st.u; updatePanel();
+    }
+    draw(now / 1000);
+    requestAnimationFrame(frame);
+  }
+
+  resize(); buildTable(); buildChips(); updatePanel();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
